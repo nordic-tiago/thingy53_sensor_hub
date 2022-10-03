@@ -1,0 +1,10 @@
+{
+  "nrf-connect.topdir": "${nrf-connect.sdk:2.0.0}",
+  "nrf-connect.toolchain.path": "${nrf-connect.toolchain:2.0.0}",
+  "nrf-connect.applications": [
+    "c:\\myapps\\thingy53_sensor_hub"
+  ],
+  "files.associations": {
+    "printk.h": "c"
+  }
+}
