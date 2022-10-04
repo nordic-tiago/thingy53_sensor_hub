@@ -28,7 +28,7 @@
 #include <hal/nrf_saadc.h>
 #include "services/sensor_hub_service.h"
 
-//ADC settings
+// ---- ADC settings START ---- //
 #define ADC_RESOLUTION 14
 
 static const struct adc_channel_cfg adc_channel_cfg = {
@@ -38,17 +38,43 @@ static const struct adc_channel_cfg adc_channel_cfg = {
 	.input_positive = NRF_SAADC_INPUT_AIN2,
 };
 
-struct adc_sequence adc_seq = {
+static struct adc_sequence adc_seq = {
 	.channels = BIT(0),	
 	.oversampling = 4,
 	.calibrate = true,
 	.resolution = ADC_RESOLUTION,
 };
+// ---- ADC settings END ---- //
 
+
+// ---- Voltage divider settings START ---- //
+/* The vbatt node in the board device tree contains the HW definition for the voltage divider, which can be applied
+to the battery voltage via an enable pin. That information will be retrieved to populate an instance of the
+structure defined below.
+The Voltage divider can be found on page 4 of the Thingy:53 schematics.
+Board device tree can be found in <sdk_location>\<sdk_version>\zephyr\boards\arm\thingy53_nrf5340\thingy53_nrf5340_common.dts -> vbatt */
+struct voltage_divider_config {
+	struct gpio_dt_spec enable_pin;
+	uint32_t output_ohm;
+	uint32_t full_ohm;
+};
+
+
+static const struct voltage_divider_config volt_div_conf = {
+	.enable_pin = GPIO_DT_SPEC_GET(DT_PATH(vbatt), power_gpios),
+	.output_ohm = DT_PROP(DT_PATH(vbatt), output_ohms),
+	.full_ohm = DT_PROP(DT_PATH(vbatt), full_ohms),
+};
+// ---- Voltage divider settings END ---- //
+
+
+// ---- APP settings START ---- //
 #define RUN_STATUS_LED          DK_LED2 //Green LED on Thingy:53
 #define UPDATE_INTERVAL  		500
+// ---- APP settings END ---- //
 
-//BT settings
+
+// ---- Bluetooth settings START ---- //
 #define DEVICE_NAME             CONFIG_BT_DEVICE_NAME
 #define DEVICE_NAME_LEN         (sizeof(DEVICE_NAME) - 1)
 
@@ -64,6 +90,7 @@ static const struct bt_data sd[] =
 {
 
 };
+// ---- Bluetooth settings START ---- //
 
 //BT globals and callbacks
 struct bt_conn *m_connection_handle = NULL;
@@ -136,16 +163,13 @@ void main(void)
 		return;
 	}
 
-	/* Setting up pin to enable voltage divider, which is defined in the devicetree vbatt node
-	<your_sdk_location>\<sdk_version>\zephyr\boards\arm\thingy53_nrf5340\thingy53_nrf5340_common.dts -> vbatt */
-	struct gpio_dt_spec volt_div = GPIO_DT_SPEC_GET(DT_PATH(vbatt), power_gpios);
-
-	if (!device_is_ready(volt_div.port)) {
+	//Setting up voltage divider
+	if (!device_is_ready(volt_div_conf.enable_pin.port)) {		
 		return;
 	}
 
-	gpio_pin_configure_dt(&volt_div, GPIO_OUTPUT);
-	gpio_pin_set_dt(&volt_div, 1);
+	gpio_pin_configure_dt(&volt_div_conf.enable_pin, GPIO_OUTPUT);
+	gpio_pin_set_dt(&volt_div_conf.enable_pin, 1);
 
 	//Setting up LEDs on Thingy:53
 	err = dk_leds_init();
@@ -210,7 +234,7 @@ static int sample_and_update_all_sensor_values(const struct device *bme688Dev, c
 	struct sensor_value blue_value;
 	int16_t batt_volt;
 	
-	//trigger sampling of bme688 sensors
+	//Trigger sampling of BME688 sensor
 	err = sensor_sample_fetch(bme688Dev);
 	if(err)
 	{
@@ -218,7 +242,7 @@ static int sample_and_update_all_sensor_values(const struct device *bme688Dev, c
 		return err;
 	}
 
-	//collect temperature sample and update characteristic
+	//Collect temperature sample and update characteristic
 	err = sensor_channel_get(bme688Dev, SENSOR_CHAN_AMBIENT_TEMP, &temperature_value);
 	if(err)
 	{
@@ -227,7 +251,7 @@ static int sample_and_update_all_sensor_values(const struct device *bme688Dev, c
 	}
 	sensor_hub_update_temperature(m_connection_handle, (uint8_t*)(&temperature_value.val1), sizeof(temperature_value.val1));
 
-	//collect pressure sample and update characteristic
+	//Collect pressure sample and update characteristic
 	err = sensor_channel_get(bme688Dev, SENSOR_CHAN_PRESS, &pressure_value);
 	if(err)
 	{
@@ -236,7 +260,7 @@ static int sample_and_update_all_sensor_values(const struct device *bme688Dev, c
 	}
 	sensor_hub_update_pressure(m_connection_handle, (uint8_t*)(&pressure_value.val1), sizeof(pressure_value.val1));
 
-	//collect humidity sample and update characteristic
+	//Collect humidity sample and update characteristic
 	err = sensor_channel_get(bme688Dev, SENSOR_CHAN_HUMIDITY, &humidity_value);
 	if(err)
 	{
@@ -245,16 +269,16 @@ static int sample_and_update_all_sensor_values(const struct device *bme688Dev, c
 	}
 	sensor_hub_update_humidity(m_connection_handle, (uint8_t*)(&humidity_value.val1), sizeof(humidity_value.val1));
 
-	//trigger sampling of bh1749
+	//Trigger sampling of BH1749 - The sensor does only support fetching SENSOR_CHAN_ALL
 	err = sensor_sample_fetch_chan(bh1749Dev, SENSOR_CHAN_ALL);
-	/* The sensor does only support fetching SENSOR_CHAN_ALL */
+	
 	if (err) 
 	{
 		printk("sensor_sample_fetch failed err %d\n", err);
 		return err;
 	}
 	
-	//collect red light sample and update characteristic
+	//Collect red light sample and update characteristic
 	err = sensor_channel_get(bh1749Dev, SENSOR_CHAN_RED, &red_value);
 	if (err) 
 	{
@@ -263,7 +287,7 @@ static int sample_and_update_all_sensor_values(const struct device *bme688Dev, c
 	}
 	sensor_hub_update_red_color(m_connection_handle, (uint8_t*)(&red_value.val1), sizeof(red_value.val1));
 
-	//collect green light sample and update characteristic
+	//Collect green light sample and update characteristic
 	err = sensor_channel_get(bh1749Dev, SENSOR_CHAN_GREEN, &green_value);
 	if (err) 
 	{
@@ -272,7 +296,7 @@ static int sample_and_update_all_sensor_values(const struct device *bme688Dev, c
 	}
 	sensor_hub_update_green_color(m_connection_handle, (uint8_t*)(&green_value.val1), sizeof(green_value.val1));
 
-	//collect red light sample and update characteristic
+	//Collect red light sample and update characteristic
 	err = sensor_channel_get(bh1749Dev, SENSOR_CHAN_BLUE, &blue_value);
 	if (err) 
 	{
@@ -281,7 +305,7 @@ static int sample_and_update_all_sensor_values(const struct device *bme688Dev, c
 	}
 	sensor_hub_update_blue_color(m_connection_handle, (uint8_t*)(&blue_value.val1), sizeof(blue_value.val1));
 
-	//collect ADC battery measurement	
+	//Collect ADC battery measurement	
 	adc_seq.buffer = &batt_volt;
 	adc_seq.buffer_size = sizeof(batt_volt);
 	
@@ -292,12 +316,12 @@ static int sample_and_update_all_sensor_values(const struct device *bme688Dev, c
 		return err;
 	}	
 
-	// convert raw ADC measurements to mV with Zephyr ADC API
+	//Convert raw ADC measurements to mV with Zephyr ADC API
 	adc_raw_to_millivolts(adc_ref_internal(adc_dev), ADC_GAIN_1_6, ADC_RESOLUTION, (int32_t*)(&batt_volt));	
     
-	// calculate actual battery voltage using voltage divider
-	batt_volt = batt_volt * 1680000 / 180000;	
-
+	//Calculate actual battery voltage using voltage divider
+	batt_volt = batt_volt * volt_div_conf.full_ohm / volt_div_conf.output_ohm;	
+	
 	sensor_hub_update_batt_volt(m_connection_handle, (uint8_t*)(&batt_volt), sizeof(batt_volt));
 
 	printk("All sensors sampled and characteristics updated!\n");
