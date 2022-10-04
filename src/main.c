@@ -28,8 +28,6 @@
 #include <hal/nrf_saadc.h>
 #include "services/sensor_hub_service.h"
 
-#if 0
-#define ADC_DEVICE_NAME DT_LABEL(DT_INST(0, nordic_nrf_saadc))
 #define ADC_RESOLUTION 10
 #define ADC_MAX 1024
 #define ADC_GAIN ADC_GAIN_1_6
@@ -42,7 +40,6 @@
 
 #define BATTERY_VOLTAGE(sample) (sample * ADC_GAIN_INT	\
 				 * ADC_REF_INTERNAL_MV / ADC_MAX)
-#endif
 
 #define DEVICE_NAME             CONFIG_BT_DEVICE_NAME
 #define DEVICE_NAME_LEN         (sizeof(DEVICE_NAME) - 1)
@@ -61,7 +58,7 @@ static const struct bt_data sd[] =
 
 };
 
-#if 0
+//the adc must be declared outside of main as other functions reference it
 const struct device *adc_dev;
 static uint16_t m_sample_buffer[BUFFER_SIZE];
 static const struct adc_channel_cfg m_vdd_channel_cfg = {
@@ -69,9 +66,8 @@ static const struct adc_channel_cfg m_vdd_channel_cfg = {
 	.reference = ADC_REFERENCE,
 	.acquisition_time = ADC_ACQUISITION_TIME,
 	.channel_id = ADC_1ST_CHANNEL_ID,
-	//.input_positive = NRF_SAADC_INPUT_VDD,
+	.input_positive = NRF_SAADC_INPUT_VDD,
 };
-#endif
 
 struct bt_conn *m_connection_handle = NULL;
 static void connected(struct bt_conn *conn, uint8_t err)
@@ -98,7 +94,6 @@ BT_CONN_CB_DEFINE(conn_callbacks) = {
 	.disconnected     = disconnected,
 };
 
-#if 0
 static int adc_sample(uint16_t *value, uint8_t len)
 {
 	int err;
@@ -135,7 +130,6 @@ static int adc_sample(uint16_t *value, uint8_t len)
 
 	return err;
 }
-#endif 
 
 static int sample_and_update_all_sensor_values(const struct device *bme688Dev, const struct device *bh1749Dev)
 {
@@ -217,12 +211,11 @@ static int sample_and_update_all_sensor_values(const struct device *bme688Dev, c
 		return err;
 	}
 	sensor_hub_update_blue_color(m_connection_handle, (uint8_t*)(&blue_value.val1), sizeof(blue_value.val1));
-#if 0
+
 	//collect ADC VDD sample
 	uint16_t vdd_mv_sample[BUFFER_SIZE];
 	adc_sample(vdd_mv_sample, sizeof(vdd_mv_sample));
 	sensor_hub_update_adc_meas(m_connection_handle, (uint8_t*)vdd_mv_sample, sizeof(vdd_mv_sample));
-#endif
 
 	printk("All sensors sampled and characteristics updated!\n");
 
@@ -254,14 +247,14 @@ void main(void)
 		return;
 	}
 
-#if 0
 	//setting up ADC
-	adc_dev = device_get_binding(ADC_DEVICE_NAME);
-	if (!adc_dev) 
+	adc_dev = DEVICE_DT_GET_ONE(nordic_nrf_saadc);
+
+	if (!device_is_ready(adc_dev)) 
 	{
-        printk("device_get_binding ADC_0 (=%s) failed\n", ADC_DEVICE_NAME);
+		printk("ADC is not ready\n");
 		return;
-    } 
+	}
 
 	NRF_SAADC->TASKS_CALIBRATEOFFSET = 1;
 	k_msleep(10);
@@ -272,7 +265,6 @@ void main(void)
 	    printk("Error in ADC setup: %d\n", err);
 		return;
 	}
-#endif
 
 	err = dk_leds_init();
 	if (err) 
