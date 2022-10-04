@@ -13,6 +13,7 @@
 #include <bluetooth/uuid.h>
 #include <bluetooth/gatt.h>
 
+//Declaration of custom GATT service and characteristics UUIDs
 #define SENSOR_HUB_SERVICE_UUID \
     BT_UUID_128_ENCODE(0xa5b46352, 0x9d13, 0x479f, 0x9fcb, 0x3dcdf0a13f4d)
 
@@ -34,10 +35,8 @@
 #define BLUE_COLOR_CHARACTERISTIC_UUID \
     BT_UUID_128_ENCODE(0xf5d2eab5, 0x41e8, 0x4f7c, 0xaef7, 0xc9fff4c544c0)
 
-#define ADC_MEAS_CHARACTERISTIC_UUID \
+#define BATT_VOLT_CHARACTERISTIC_UUID \
     BT_UUID_128_ENCODE(0xfa3cf070, 0xd0c7, 0x4668, 0x96c4, 0x86125c8ac5df)
-
-int sensor_hub_init(void);
 
 void sensor_hub_update_temperature(struct bt_conn *conn, const uint8_t *data, uint16_t len);
 void sensor_hub_update_humidity(struct bt_conn *conn, const uint8_t *data, uint16_t len);
@@ -45,4 +44,4 @@ void sensor_hub_update_pressure(struct bt_conn *conn, const uint8_t *data, uint1
 void sensor_hub_update_red_color(struct bt_conn *conn, const uint8_t *data, uint16_t len);
 void sensor_hub_update_green_color(struct bt_conn *conn, const uint8_t *data, uint16_t len);
 void sensor_hub_update_blue_color(struct bt_conn *conn, const uint8_t *data, uint16_t len);
-void sensor_hub_update_adc_meas(struct bt_conn *conn, const uint8_t *data, uint16_t len);
+void sensor_hub_update_batt_volt(struct bt_conn *conn, const uint8_t *data, uint16_t len);

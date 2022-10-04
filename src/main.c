@@ -28,46 +28,44 @@
 #include <hal/nrf_saadc.h>
 #include "services/sensor_hub_service.h"
 
-//adc settings
+//ADC settings
 #define ADC_RESOLUTION 14
-#define ADC_MAX 1024
-#define ADC_GAIN ADC_GAIN_1_6
-#define ADC_GAIN_INT 6
-#define ADC_REFERENCE ADC_REF_INTERNAL
-//#define ADC_REF_INTERNAL_MV 600UL
-#define ADC_ACQUISITION_TIME ADC_ACQ_TIME(ADC_ACQ_TIME_MICROSECONDS, 40)
-#define ADC_1ST_CHANNEL_ID 0
-//#define BUFFER_SIZE 1
 
-/*define BATTERY_VOLTAGE(sample) (sample * ADC_GAIN_INT	\
-				 * ADC_REF_INTERNAL_MV / ADC_MAX)*/
+static const struct adc_channel_cfg adc_channel_cfg = {
+	.gain = ADC_GAIN_1_6,
+	.reference = ADC_REF_INTERNAL,
+	.acquisition_time = ADC_ACQ_TIME(ADC_ACQ_TIME_MICROSECONDS, 40),
+	.input_positive = NRF_SAADC_INPUT_AIN2,
+};
 
+struct adc_sequence adc_seq = {
+	.channels = BIT(0),	
+	.oversampling = 4,
+	.calibrate = true,
+	.resolution = ADC_RESOLUTION,
+};
+
+#define RUN_STATUS_LED          DK_LED2 //Green LED on Thingy:53
+#define UPDATE_INTERVAL  		500
+
+//BT settings
 #define DEVICE_NAME             CONFIG_BT_DEVICE_NAME
 #define DEVICE_NAME_LEN         (sizeof(DEVICE_NAME) - 1)
 
-#define RUN_STATUS_LED          DK_LED2 //green LED
-#define UPDATE_INTERVAL  		500
-
+//BT advertisement packet data
 static const struct bt_data ad[] = 
 {
 	BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
 	BT_DATA(BT_DATA_NAME_COMPLETE, DEVICE_NAME, DEVICE_NAME_LEN),
 };
 
+//BT scan response data
 static const struct bt_data sd[] = 
 {
 
 };
 
-const struct device *adc_dev;
-static const struct adc_channel_cfg m_vdd_channel_cfg = {
-	.gain = ADC_GAIN,
-	.reference = ADC_REFERENCE,
-	.acquisition_time = ADC_ACQUISITION_TIME,
-	//.channel_id = ADC_1ST_CHANNEL_ID,
-	.input_positive = NRF_SAADC_INPUT_AIN2,
-};
-
+//BT globals and callbacks
 struct bt_conn *m_connection_handle = NULL;
 static void connected(struct bt_conn *conn, uint8_t err)
 {
@@ -93,45 +91,115 @@ BT_CONN_CB_DEFINE(conn_callbacks) = {
 	.disconnected     = disconnected,
 };
 
-static int adc_sample(int16_t *value)
+//Local function prototypes
+static int sample_and_update_all_sensor_values(const struct device *bme688Dev, const struct device *bh1749Dev, const struct device *adc_dev);
+
+// Main loop
+void main(void)
 {
+	uint8_t blink_status = 0;
 	int err;
 
-	const struct adc_sequence sequence = {
-		.channels = BIT(ADC_1ST_CHANNEL_ID),
-		.buffer = value,
-		.buffer_size = sizeof(value),
-		.oversampling = 4,
-		.calibrate = true,
-		.resolution = ADC_RESOLUTION,
-	};
+	printk("Starting Sensor Hub application\n");
 
-	if (!adc_dev) 
+	//Setting up BH1749 light and color sensor
+	const struct device *bh1749rgbDev = DEVICE_DT_GET_ONE(rohm_bh1749);
+
+	if (!device_is_ready(bh1749rgbDev)) 
 	{
-		return -1;
+		printk("Sensor device not ready\n");
+		return;
 	}
 
-	err = adc_read(adc_dev, &sequence);
+	//Setting up BME688 environmental sensor */
+	const struct device *bme688SensorDev = DEVICE_DT_GET_ONE(bosch_bme680);
+
+	if (!device_is_ready(bme688SensorDev)) 
+	{
+		printk("Sensor device not ready\n");
+		return;
+	}
+
+	//Setting up ADC
+	const struct device *adc_dev = DEVICE_DT_GET_ONE(nordic_nrf_saadc);
+
+	if (!device_is_ready(adc_dev)) 
+	{
+		printk("ADC is not ready\n");
+		return;
+	}
+
+    err = adc_channel_setup(adc_dev, &adc_channel_cfg);
+    if (err) 
+	{
+	    printk("Error in ADC setup: %d\n", err);
+		return;
+	}
+
+	/* Setting up pin to enable voltage divider, which is defined in the devicetree vbatt node
+	<your_sdk_location>\<sdk_version>\zephyr\boards\arm\thingy53_nrf5340\thingy53_nrf5340_common.dts -> vbatt */
+	struct gpio_dt_spec volt_div = GPIO_DT_SPEC_GET(DT_PATH(vbatt), power_gpios);
+
+	if (!device_is_ready(volt_div.port)) {
+		return;
+	}
+
+	gpio_pin_configure_dt(&volt_div, GPIO_OUTPUT);
+	gpio_pin_set_dt(&volt_div, 1);
+
+	//Setting up LEDs on Thingy:53
+	err = dk_leds_init();
 	if (err) 
 	{
-        printk("adc_read() failed with code %d\n", err);
-		return err;
+		printk("LEDs init failed (err %d)\n", err);
+		return;
 	}
-	
-	/*#define BATTERY_VOLTAGE(sample) (sample * ADC_GAIN_INT	\
-				 * ADC_REF_INTERNAL_MV / ADC_MAX)*/
 
-	adc_raw_to_millivolts(adc_ref_internal(adc_dev), ADC_GAIN_1_6, ADC_RESOLUTION, (int32_t*)value);
-	*value = *value * 1680000 / 180000;
-    /*for (int i = 0; i < BUFFER_SIZE; i++) 
+	//Setting up Bluetooth
+	err = bt_enable(NULL);
+	if (err) 
 	{
-		value[i] = BATTERY_VOLTAGE(m_sample_buffer[i]);
-	}*/
+		printk("Bluetooth init failed (err %d)\n", err);
+		return;
+	}
 
-	return err;
+	printk("Bluetooth initialized\n");
+
+	if (IS_ENABLED(CONFIG_SETTINGS)) 
+	{
+		settings_load();
+	}
+
+	err = bt_le_adv_start(BT_LE_ADV_CONN, ad, ARRAY_SIZE(ad),
+			      sd, ARRAY_SIZE(sd));
+	if (err) 
+	{
+		printk("Advertising failed to start (err %d)\n", err);
+		return;
+	}
+
+	printk("Advertising successfully started\n");
+
+	for (;;) 
+	{
+		
+		if(!(blink_status % 2) && m_connection_handle)
+		{
+			/*When blink is even number it means the LED has been OFF for 500ms, so we can sample
+			the sensors if there is a BLE central connected */
+			sample_and_update_all_sensor_values(bme688SensorDev, bh1749rgbDev, adc_dev);
+		}
+
+		//Change LED status
+		dk_set_led(RUN_STATUS_LED, (++blink_status) % 2);
+		
+		//Put thread to sleep for UPDATE_INTERVAL
+		k_sleep(K_MSEC(UPDATE_INTERVAL));
+	}
 }
 
-static int sample_and_update_all_sensor_values(const struct device *bme688Dev, const struct device *bh1749Dev)
+//This function samples all the needed data from the sensors and sends it over to the service.c/.h module that handles the GATT data transfer
+static int sample_and_update_all_sensor_values(const struct device *bme688Dev, const struct device *bh1749Dev, const struct device *adc_dev)
 {
 	int err;
 	struct sensor_value temperature_value;
@@ -140,6 +208,7 @@ static int sample_and_update_all_sensor_values(const struct device *bme688Dev, c
 	struct sensor_value red_value;
 	struct sensor_value green_value;
 	struct sensor_value blue_value;
+	int16_t batt_volt;
 	
 	//trigger sampling of bme688 sensors
 	err = sensor_sample_fetch(bme688Dev);
@@ -212,114 +281,26 @@ static int sample_and_update_all_sensor_values(const struct device *bme688Dev, c
 	}
 	sensor_hub_update_blue_color(m_connection_handle, (uint8_t*)(&blue_value.val1), sizeof(blue_value.val1));
 
-	//collect ADC VDD sample
-	int16_t vdd_mv_sample = 0;
-	adc_sample(&vdd_mv_sample);
-	sensor_hub_update_adc_meas(m_connection_handle, (uint8_t*)(&vdd_mv_sample), sizeof(vdd_mv_sample));
+	//collect ADC battery measurement	
+	adc_seq.buffer = &batt_volt;
+	adc_seq.buffer_size = sizeof(batt_volt);
+	
+	err = adc_read(adc_dev, &adc_seq);
+	if (err) 
+	{
+        printk("adc_read() failed with code %d\n", err);
+		return err;
+	}	
+
+	// convert raw ADC measurements to mV with Zephyr ADC API
+	adc_raw_to_millivolts(adc_ref_internal(adc_dev), ADC_GAIN_1_6, ADC_RESOLUTION, (int32_t*)(&batt_volt));	
+    
+	// calculate actual battery voltage using voltage divider
+	batt_volt = batt_volt * 1680000 / 180000;	
+
+	sensor_hub_update_batt_volt(m_connection_handle, (uint8_t*)(&batt_volt), sizeof(batt_volt));
 
 	printk("All sensors sampled and characteristics updated!\n");
 
 	return 0;
-}
-
-void main(void)
-{
-	uint8_t blink_status = 0;
-	int err;
-
-	printk("Starting Sensor Hub application\n");
-
-	//setting up BH1749 light and color sensor */
-	const struct device *bh1749rgbDev = DEVICE_DT_GET_ONE(rohm_bh1749);
-
-	if (!device_is_ready(bh1749rgbDev)) 
-	{
-		printk("Sensor device not ready\n");
-		return;
-	}
-
-	//setting up BME688 environmental sensor */
-	const struct device *bme688SensorDev = DEVICE_DT_GET_ONE(bosch_bme680);
-
-	if (!device_is_ready(bme688SensorDev)) 
-	{
-		printk("Sensor device not ready\n");
-		return;
-	}
-
-	//setting up ADC
-	adc_dev = DEVICE_DT_GET_ONE(nordic_nrf_saadc);
-
-	if (!device_is_ready(adc_dev)) 
-	{
-		printk("ADC is not ready\n");
-		return;
-	}
-
-	//NRF_SAADC->TASKS_CALIBRATEOFFSET = 1;
-	k_msleep(10);
-
-    err = adc_channel_setup(adc_dev, &m_vdd_channel_cfg);
-    if (err) 
-	{
-	    printk("Error in ADC setup: %d\n", err);
-		return;
-	}
-
-	//setting up pin to enable voltage divider, which is defined in the device tree
-	struct gpio_dt_spec volt_div = GPIO_DT_SPEC_GET(DT_PATH(vbatt), power_gpios);
-
-	if (!device_is_ready(volt_div.port)) {
-		return;
-	}
-
-	gpio_pin_configure_dt(&volt_div, GPIO_OUTPUT);
-	gpio_pin_set_dt(&volt_div, 1);
-
-	err = dk_leds_init();
-	if (err) 
-	{
-		printk("LEDs init failed (err %d)\n", err);
-		return;
-	}
-
-	err = bt_enable(NULL);
-	if (err) 
-	{
-		printk("Bluetooth init failed (err %d)\n", err);
-		return;
-	}
-
-	printk("Bluetooth initialized\n");
-
-	if (IS_ENABLED(CONFIG_SETTINGS)) 
-	{
-		settings_load();
-	}
-
-	err = bt_le_adv_start(BT_LE_ADV_CONN, ad, ARRAY_SIZE(ad),
-			      sd, ARRAY_SIZE(sd));
-	if (err) 
-	{
-		printk("Advertising failed to start (err %d)\n", err);
-		return;
-	}
-
-	printk("Advertising successfully started\n");
-
-	for (;;) 
-	{
-		
-		if(!(blink_status % 2) && m_connection_handle)
-		{
-			//status LEDs are OFF, and there is a BLE central connected, time to take samples
-			sample_and_update_all_sensor_values(bme688SensorDev, bh1749rgbDev);
-		}
-
-		//change LED status
-		dk_set_led(RUN_STATUS_LED, (++blink_status) % 2);
-		
-		//put thread to sleep for UPDATE_INTERVAL
-		k_sleep(K_MSEC(UPDATE_INTERVAL));
-	}
 }
