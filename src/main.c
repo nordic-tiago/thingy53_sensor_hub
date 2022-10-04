@@ -28,18 +28,19 @@
 #include <hal/nrf_saadc.h>
 #include "services/sensor_hub_service.h"
 
-#define ADC_RESOLUTION 10
+//adc settings
+#define ADC_RESOLUTION 14
 #define ADC_MAX 1024
 #define ADC_GAIN ADC_GAIN_1_6
 #define ADC_GAIN_INT 6
 #define ADC_REFERENCE ADC_REF_INTERNAL
-#define ADC_REF_INTERNAL_MV 600UL
-#define ADC_ACQUISITION_TIME ADC_ACQ_TIME(ADC_ACQ_TIME_MICROSECONDS, 10)
+//#define ADC_REF_INTERNAL_MV 600UL
+#define ADC_ACQUISITION_TIME ADC_ACQ_TIME(ADC_ACQ_TIME_MICROSECONDS, 40)
 #define ADC_1ST_CHANNEL_ID 0
-#define BUFFER_SIZE 1
+//#define BUFFER_SIZE 1
 
-#define BATTERY_VOLTAGE(sample) (sample * ADC_GAIN_INT	\
-				 * ADC_REF_INTERNAL_MV / ADC_MAX)
+/*define BATTERY_VOLTAGE(sample) (sample * ADC_GAIN_INT	\
+				 * ADC_REF_INTERNAL_MV / ADC_MAX)*/
 
 #define DEVICE_NAME             CONFIG_BT_DEVICE_NAME
 #define DEVICE_NAME_LEN         (sizeof(DEVICE_NAME) - 1)
@@ -58,15 +59,13 @@ static const struct bt_data sd[] =
 
 };
 
-//the adc must be declared outside of main as other functions reference it
 const struct device *adc_dev;
-static uint16_t m_sample_buffer[BUFFER_SIZE];
 static const struct adc_channel_cfg m_vdd_channel_cfg = {
 	.gain = ADC_GAIN,
 	.reference = ADC_REFERENCE,
 	.acquisition_time = ADC_ACQUISITION_TIME,
-	.channel_id = ADC_1ST_CHANNEL_ID,
-	.input_positive = NRF_SAADC_INPUT_VDD,
+	//.channel_id = ADC_1ST_CHANNEL_ID,
+	.input_positive = NRF_SAADC_INPUT_AIN2,
 };
 
 struct bt_conn *m_connection_handle = NULL;
@@ -94,20 +93,16 @@ BT_CONN_CB_DEFINE(conn_callbacks) = {
 	.disconnected     = disconnected,
 };
 
-static int adc_sample(uint16_t *value, uint8_t len)
+static int adc_sample(int16_t *value)
 {
 	int err;
 
-	if(len<BUFFER_SIZE)
-	{
-		printk("Provided sample array is too short");
-		return -1;
-	}
-
 	const struct adc_sequence sequence = {
 		.channels = BIT(ADC_1ST_CHANNEL_ID),
-		.buffer = m_sample_buffer,
-		.buffer_size = sizeof(m_sample_buffer),
+		.buffer = value,
+		.buffer_size = sizeof(value),
+		.oversampling = 4,
+		.calibrate = true,
 		.resolution = ADC_RESOLUTION,
 	};
 
@@ -123,10 +118,15 @@ static int adc_sample(uint16_t *value, uint8_t len)
 		return err;
 	}
 	
-    for (int i = 0; i < BUFFER_SIZE; i++) 
+	/*#define BATTERY_VOLTAGE(sample) (sample * ADC_GAIN_INT	\
+				 * ADC_REF_INTERNAL_MV / ADC_MAX)*/
+
+	adc_raw_to_millivolts(adc_ref_internal(adc_dev), ADC_GAIN_1_6, ADC_RESOLUTION, (int32_t*)value);
+	*value = *value * 1680000 / 180000;
+    /*for (int i = 0; i < BUFFER_SIZE; i++) 
 	{
 		value[i] = BATTERY_VOLTAGE(m_sample_buffer[i]);
-	}
+	}*/
 
 	return err;
 }
@@ -213,9 +213,9 @@ static int sample_and_update_all_sensor_values(const struct device *bme688Dev, c
 	sensor_hub_update_blue_color(m_connection_handle, (uint8_t*)(&blue_value.val1), sizeof(blue_value.val1));
 
 	//collect ADC VDD sample
-	uint16_t vdd_mv_sample[BUFFER_SIZE];
-	adc_sample(vdd_mv_sample, sizeof(vdd_mv_sample));
-	sensor_hub_update_adc_meas(m_connection_handle, (uint8_t*)vdd_mv_sample, sizeof(vdd_mv_sample));
+	int16_t vdd_mv_sample = 0;
+	adc_sample(&vdd_mv_sample);
+	sensor_hub_update_adc_meas(m_connection_handle, (uint8_t*)(&vdd_mv_sample), sizeof(vdd_mv_sample));
 
 	printk("All sensors sampled and characteristics updated!\n");
 
@@ -256,7 +256,7 @@ void main(void)
 		return;
 	}
 
-	NRF_SAADC->TASKS_CALIBRATEOFFSET = 1;
+	//NRF_SAADC->TASKS_CALIBRATEOFFSET = 1;
 	k_msleep(10);
 
     err = adc_channel_setup(adc_dev, &m_vdd_channel_cfg);
@@ -265,6 +265,16 @@ void main(void)
 	    printk("Error in ADC setup: %d\n", err);
 		return;
 	}
+
+	//setting up pin to enable voltage divider, which is defined in the device tree
+	struct gpio_dt_spec volt_div = GPIO_DT_SPEC_GET(DT_PATH(vbatt), power_gpios);
+
+	if (!device_is_ready(volt_div.port)) {
+		return;
+	}
+
+	gpio_pin_configure_dt(&volt_div, GPIO_OUTPUT);
+	gpio_pin_set_dt(&volt_div, 1);
 
 	err = dk_leds_init();
 	if (err) 
