@@ -90,7 +90,7 @@ static const struct bt_data sd[] =
 {
 
 };
-// ---- Bluetooth settings START ---- //
+// ---- Bluetooth settings END ---- //
 
 //BT globals and callbacks
 struct bt_conn *m_connection_handle = NULL;
