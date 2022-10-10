@@ -29,7 +29,7 @@
 
 /*This function is called whenever the Client Characteristic Control Descriptor (CCCD) has been 
 changed by the GATT client, for each of the characteristics*/
-void on_cccd_changed(const struct bt_gatt_attr *attr, uint16_t value)
+static void on_cccd_changed(const struct bt_gatt_attr *attr, uint16_t value)
 {
     ARG_UNUSED(attr);
     switch(value)
