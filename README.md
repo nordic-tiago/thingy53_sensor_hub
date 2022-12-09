@@ -1,4 +1,1 @@
-# Thingy 53 Sensor Hub
-
-## Introduction
-Not much stuff
+https://devzone.nordicsemi.com/nordic/nordic-blog/b/blog/posts/thingy-53-sensor-hub
