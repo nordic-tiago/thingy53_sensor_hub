@@ -24,7 +24,7 @@
 
 #include <dk_buttons_and_leds.h>
 #include <zephyr/drivers/sensor.h>
-#include <drivers/adc.h>
+#include <zephyr/drivers/adc.h>
 #include <hal/nrf_saadc.h>
 #include "services/sensor_hub_service.h"
 
@@ -244,15 +244,17 @@ static int sample_and_update_all_sensor_values(const struct device *bme688Dev, c
 
 	//Collect temperature sample and update characteristic
 	err = sensor_channel_get(bme688Dev, SENSOR_CHAN_AMBIENT_TEMP, &temperature_value);
+	
 	if(err)
 	{
 		printk("Failed to fetch temperature sample");
 		return err;
 	}
 	sensor_hub_update_temperature(m_connection_handle, (uint8_t*)(&temperature_value.val1), sizeof(temperature_value.val1));
-
+	printk("Temperature %d \n", temperature_value.val1);
 	//Collect pressure sample and update characteristic
 	err = sensor_channel_get(bme688Dev, SENSOR_CHAN_PRESS, &pressure_value);
+
 	if(err)
 	{
 		printk("Failed to fetch pressure sample");
@@ -262,6 +264,7 @@ static int sample_and_update_all_sensor_values(const struct device *bme688Dev, c
 
 	//Collect humidity sample and update characteristic
 	err = sensor_channel_get(bme688Dev, SENSOR_CHAN_HUMIDITY, &humidity_value);
+
 	if(err)
 	{
 		printk("Failed to fetch humidity sample");
@@ -271,7 +274,7 @@ static int sample_and_update_all_sensor_values(const struct device *bme688Dev, c
 
 	//Trigger sampling of BH1749 - The sensor does only support fetching SENSOR_CHAN_ALL
 	err = sensor_sample_fetch_chan(bh1749Dev, SENSOR_CHAN_ALL);
-	
+
 	if (err) 
 	{
 		printk("sensor_sample_fetch failed err %d\n", err);
@@ -304,6 +307,7 @@ static int sample_and_update_all_sensor_values(const struct device *bme688Dev, c
 		return err;
 	}
 	sensor_hub_update_blue_color(m_connection_handle, (uint8_t*)(&blue_value.val1), sizeof(blue_value.val1));
+	printk("blue value %d \n", blue_value.val1);
 
 	//Collect ADC battery measurement	
 	adc_seq.buffer = &batt_volt;
@@ -321,6 +325,7 @@ static int sample_and_update_all_sensor_values(const struct device *bme688Dev, c
     
 	//Calculate actual battery voltage using voltage divider
 	batt_volt = batt_volt * volt_div_conf.full_ohm / volt_div_conf.output_ohm;	
+	printk("Battery Voltage %d \n", batt_volt);
 	
 	sensor_hub_update_batt_volt(m_connection_handle, (uint8_t*)(&batt_volt), sizeof(batt_volt));
 

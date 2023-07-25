@@ -4,17 +4,17 @@
 #include <stddef.h>
 #include <string.h>
 #include <errno.h>
-#include <sys/printk.h>
-#include <sys/byteorder.h>
-#include <zephyr.h>
+#include <zephyr/sys/printk.h>
+#include <zephyr/sys/byteorder.h>
+#include <zephyr/kernel.h>
 #include <soc.h>
 
-#include <bluetooth/bluetooth.h>
-#include <bluetooth/hci.h>
-#include <bluetooth/conn.h>
-#include <bluetooth/uuid.h>
-#include <bluetooth/addr.h>
-#include <bluetooth/gatt.h>
+#include <zephyr/bluetooth/bluetooth.h>
+#include <zephyr/bluetooth/hci.h>
+#include <zephyr/bluetooth/conn.h>
+#include <zephyr/bluetooth/uuid.h>
+#include <zephyr/bluetooth/addr.h>
+#include <zephyr/bluetooth/gatt.h>
 
 #include "sensor_hub_service.h"
 
@@ -35,6 +35,7 @@ static void on_cccd_changed(const struct bt_gatt_attr *attr, uint16_t value)
     switch(value)
     {
         case BT_GATT_CCC_NOTIFY: 
+           
             // Start sending stuff!
             break;
         
@@ -102,7 +103,7 @@ void sensor_hub_update_temperature(struct bt_conn *conn, const uint8_t *data, ui
 
     struct bt_gatt_notify_params params = 
     {
-        //.uuid   = BT_UUID_SENSOR_HUB_TEMP,
+        .uuid   = BT_UUID_SENSOR_HUB_TEMP,
         .attr   = attr,
         .data   = data,
         .len    = len,
@@ -129,7 +130,7 @@ void sensor_hub_update_pressure(struct bt_conn *conn, const uint8_t *data, uint1
 
     struct bt_gatt_notify_params params = 
     {
-        //.uuid   = BT_UUID_SENSOR_HUB_PRESSURE,
+        .uuid   = BT_UUID_SENSOR_HUB_PRESSURE,
         .attr   = attr,
         .data   = data,
         .len    = len,
@@ -156,7 +157,7 @@ void sensor_hub_update_humidity(struct bt_conn *conn, const uint8_t *data, uint1
 
     struct bt_gatt_notify_params params = 
     {
-        //.uuid   = BT_UUID_SENSOR_HUB_HUMIDITY,
+        .uuid   = BT_UUID_SENSOR_HUB_HUMIDITY,
         .attr   = attr,
         .data   = data,
         .len    = len,
@@ -183,7 +184,7 @@ void sensor_hub_update_red_color(struct bt_conn *conn, const uint8_t *data, uint
 
     struct bt_gatt_notify_params params = 
     {
-        //.uuid   = BT_UUID_SENSOR_HUB_RED_COLOR,
+        .uuid   = BT_UUID_SENSOR_HUB_RED_COLOR,
         .attr   = attr,
         .data   = data,
         .len    = len,
@@ -210,7 +211,7 @@ void sensor_hub_update_green_color(struct bt_conn *conn, const uint8_t *data, ui
 
     struct bt_gatt_notify_params params = 
     {
-        //.uuid   = BT_UUID_SENSOR_HUB_GREEN_COLOR,
+        .uuid   = BT_UUID_SENSOR_HUB_GREEN_COLOR,
         .attr   = attr,
         .data   = data,
         .len    = len,
@@ -237,7 +238,7 @@ void sensor_hub_update_blue_color(struct bt_conn *conn, const uint8_t *data, uin
 
     struct bt_gatt_notify_params params = 
     {
-        //.uuid   = BT_UUID_SENSOR_HUB_BLUE_COLOR,
+        .uuid   = BT_UUID_SENSOR_HUB_BLUE_COLOR,
         .attr   = attr,
         .data   = data,
         .len    = len,
